@@ -5,21 +5,30 @@
 package com.wadpam.gaelic.config;
 
 import com.wadpam.gaelic.Node;
+import com.wadpam.gaelic.crud.CrudService;
+import com.wadpam.gaelic.tree.CrudLeaf;
 import com.wadpam.gaelic.tree.InterceptedPath;
 import com.wadpam.gaelic.tree.Interceptor;
+import com.wadpam.gaelic.tree.InterceptorDelegate;
+import com.wadpam.gaelic.tree.NodeDelegate;
 import com.wadpam.gaelic.tree.Path;
 import java.util.TreeMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  *
  * @author sosandstrom
  */
 public class ConfigBuilder {
+    
+    static final Logger LOG = LoggerFactory.getLogger(ConfigBuilder.class);
+    
     protected static final String NAME_ROOT = "root";
     protected static final TreeMap<String,ConfigBuilder> BUILDER_MAP = new TreeMap<String, ConfigBuilder>();
     protected static final TreeMap<String,Node> NODE_MAP = new TreeMap<String, Node>();
     
-    private final Node node;
+    protected final Node node;
     
     public ConfigBuilder() {
         this.node = null;
@@ -29,28 +38,11 @@ public class ConfigBuilder {
         this.node = node;
     }
     
-    public Node build() {
-        return node != null ? node : NODE_MAP.get(NAME_ROOT);
-    }
-    
-    public static ConfigBuilder to(Node node) {
-        return new ConfigBuilder(node);
-    }
-
-    public ConfigBuilder path(String path) {
-        return add(path, Path.class);
-    }
-    
     public ConfigBuilder add(String path, Class nodeClass) {
         try {
             final Node child = (Node) nodeClass.newInstance();
             child.setName(path);
-            
-            ((Path) node).addChild(path, child);
-            final ConfigBuilder builder = new ConfigBuilder(child);
-            mapBuilder(builder);
-            
-            return builder;
+            return add(path, child);
         } catch (InstantiationException ex) {
             throw new RuntimeException("Building Config", ex);
         } catch (IllegalAccessException ex) {
@@ -59,6 +51,8 @@ public class ConfigBuilder {
     }
     
     public ConfigBuilder add(String path, Node child) {
+        LOG.trace("adding child {} to this {} for path {}", new Object[] {
+            child, node, path});
         ((Path) node).addChild(path, child);
         ConfigBuilder builder = to(child);
         mapBuilder(path, builder);
@@ -70,20 +64,50 @@ public class ConfigBuilder {
         return add(path, child);
     }
     
+    public Node build() {
+        return node != null ? node : NODE_MAP.get(NAME_ROOT);
+    }
+    
+    public ConfigBuilder crud(String version, Class leafClass, Class serviceClass) {
+        try {
+            CrudService service = (CrudService) serviceClass.newInstance();
+            CrudLeaf leaf = (CrudLeaf) leafClass.newInstance();
+            return crud(version, leaf, service);
+        } catch (InstantiationException ex) {
+            throw new RuntimeException("instantiating", ex);
+        } catch (IllegalAccessException ex) {
+            throw new RuntimeException("access", ex);
+        }
+    }
+    
+    public ConfigBuilder crud(String version, CrudLeaf leaf, CrudService service) {
+        leaf.setService(service);
+        return add(version, leaf);
+    }
+    
+    public static ConfigBuilder from(String name) {
+        final ConfigBuilder builder = BUILDER_MAP.get(name);
+        LOG.trace(" -> from({}) gives {}", name, builder);
+        return builder;
+    }
+    
+    public static Node get(String name) {
+        return NODE_MAP.get(name);
+    }
+    
+    public ConfigBuilder interceptor(String path, Interceptor interceptor) {
+        InterceptorDelegate delegate = new InterceptorDelegate();
+        delegate.setInterceptor(interceptor);
+        add(path, delegate);
+        DelegateBuilder builder = new DelegateBuilder(delegate);
+        mapBuilder(path, builder);
+        return builder;
+    }
+
     public ConfigBuilder interceptedPath(String path, Interceptor interceptor) {
         InterceptedPath p = new InterceptedPath();
         p.setInterceptor(interceptor);
         return add(path, p);
-    }
-    
-    public static ConfigBuilder root() {
-        NODE_MAP.clear();
-        BUILDER_MAP.clear();
-        final Path root = new Path();
-        root.setName(NAME_ROOT);
-        ConfigBuilder builder = to(root);
-        mapBuilder(builder);
-        return builder;
     }
     
     protected static void mapBuilder(ConfigBuilder builder) {
@@ -110,11 +134,27 @@ public class ConfigBuilder {
         return this;
     }
     
-    public static ConfigBuilder from(String name) {
-        return BUILDER_MAP.get(name);
+    public ConfigBuilder path(String path) {
+        return add(path, Path.class);
     }
     
-    public static Node get(String name) {
-        return NODE_MAP.get(name);
+    public static ConfigBuilder root() {
+        NODE_MAP.clear();
+        BUILDER_MAP.clear();
+        final Path root = new Path();
+        root.setName(NAME_ROOT);
+        ConfigBuilder builder = to(root);
+        mapBuilder(builder);
+        return builder;
     }
+    
+    public static ConfigBuilder to(Node node) {
+        return new ConfigBuilder(node);
+    }
+
+    @Override
+    public String toString() {
+        return String.format("%s{%s}", getClass().getSimpleName(), node);
+    }
+
 }

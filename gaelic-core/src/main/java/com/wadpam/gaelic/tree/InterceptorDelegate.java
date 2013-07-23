@@ -16,7 +16,7 @@ import javax.servlet.http.HttpServletResponse;
  *
  * @author sosandstrom
  */
-public class InterceptorDelegate extends Node {
+public class InterceptorDelegate extends NodeDelegate {
     
     private Interceptor interceptor;
 
@@ -26,12 +26,12 @@ public class InterceptorDelegate extends Node {
         final boolean proceed = interceptor.preHandle(req, resp, handler);
             
         if (proceed) {
+            enqueueForCompletion(req, interceptor);
             super.service(req, resp);
 
             interceptor.postHandle(req, resp, handler, req);
-            enqueueForCompletion(req, interceptor);
         }
-        else {
+        else if (null == req.getAttribute(GaelicServlet.REQUEST_ATTR_RESPONSEBODY)) {
             setResponseBody(req, 403, null);
         }
     };

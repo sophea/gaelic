@@ -26,7 +26,11 @@
     </servlet>
     <servlet-mapping>
         <servlet-name>GaelicServlet</servlet-name>
-        <url-pattern>/*</url-pattern>
+        <url-pattern>/api/*</url-pattern>
     </servlet-mapping>
-
+    <servlet-mapping>
+        <servlet-name>GaelicServlet</servlet-name>
+        <url-pattern>/oauth/*</url-pattern>
+    </servlet-mapping>
+    
 </web-app>
