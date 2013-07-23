@@ -1,0 +1,29 @@
+#set( $symbol_pound = '#' )
+#set( $symbol_dollar = '$' )
+#set( $symbol_escape = '\' )
+<html>
+    <head>
+        <title>Signin in...</title>
+    </head>
+    <body>
+        <h1 id="h1">Signing in...</h1>
+        <script type="text/javascript" src="/js/jquery-1.9.1.min.js"></script>
+        <script type="text/javascript" src="/js/common.js"></script>
+        <script type="text/javascript" src="/js/oauth2.js"></script>
+        <script type="text/javascript">
+
+${symbol_dollar}(function() {
+    var jConnection = registerFederated("/api/kh", "", "", "facebook");
+    if (201 == jConnection.statusCode) {
+        document.location.href = "/register.html";
+    }
+    else if (200 == jConnection.statusCode) {
+        document.location.href = "/home.html";
+    }
+    else {
+        ${symbol_dollar}("${symbol_pound}h1").text("Error " + jConnection.statusCode + "!");
+    }
+});
+        </script>
+    </body>
+</html>

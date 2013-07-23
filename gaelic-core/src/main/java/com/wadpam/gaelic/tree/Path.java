@@ -29,7 +29,7 @@ public class Path extends Node {
     }
     
     @Override
-    public void initNode(ServletConfig config, Node parent) throws ServletException {
+    public void initNode(ServletConfig config, Node parent) throws ServletException, IOException {
         super.initNode(config, parent);
         
         for (Node child : paths.values()) {
@@ -41,7 +41,14 @@ public class Path extends Node {
     public Node getServingNode(HttpServletRequest request, LinkedList<String> pathList, int pathIndex) {
         currentRequest.set(request);
         servingChild.remove();
+        
+        if (pathList.isEmpty()) {
+            return null;
+        }
+        
         final String path = pathList.get(pathIndex);
+        LOG.trace("mapping {} for {}({})", new Object[] {
+            path, pathIndex, pathList.size()});
         String p;
         
         Node child;
@@ -57,8 +64,7 @@ public class Path extends Node {
                     
                     // store path variable?
                     if (p.startsWith("{") && p.endsWith("}")) {
-                        String name = p.substring(1, p.length()-1);
-                        setPathVariable(name, path);
+                        setPathVariable(p, path);
                     }
                 }
             }

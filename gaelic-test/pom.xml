@@ -4,7 +4,7 @@
     <parent>
         <groupId>com.wadpam.gaelic</groupId>
         <artifactId>gaelic</artifactId>
-        <version>1.0.1-SNAPSHOT</version>
+        <version>1.0.7-SNAPSHOT</version>
     </parent>
     <artifactId>gaelic-test</artifactId>
     <packaging>war</packaging>
@@ -12,8 +12,6 @@
 
     <!-- Specify hard-coded project properties here -->
     <properties>
-        <mardao.version>2.3.0</mardao.version>
-        <gae.version>1.7.5</gae.version>
         <gae.application.version>lab</gae.application.version>
         <gae.application.id>broker-web</gae.application.id>
         <netbeans.hint.deploy.server>Tomcat</netbeans.hint.deploy.server>
@@ -27,6 +25,16 @@
         <dependency>
             <groupId>${project.groupId}</groupId>
             <artifactId>gaelic-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gaelic-oauth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gaelic-oauth2-provider</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -71,6 +79,12 @@
             <artifactId>slf4j-jdk14</artifactId>
             <version>1.6.1</version>
             <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.6.1</version>
+            <scope>test</scope>
         </dependency>
         <!-- this is for Jetty and ITests 
         <dependency>
@@ -163,11 +177,10 @@
                     <forkMode>pertest</forkMode>
                     <argLine>-Xms256m -Xmx512m</argLine>
                     <testFailureIgnore>false</testFailureIgnore>
-                    <skip>${surefire.default.skip}</skip>
                 </configuration>
                 <executions>
                     <execution>
-                        <id>surefire-test</id>
+                        <id>default-test</id>
                         <phase>test</phase>
                         <goals>
                             <goal>test</goal>
@@ -183,6 +196,20 @@
                         </configuration>
                     </execution>
 
+                    <execution>
+                        <id>surefire-itest</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <includes>
+                                <include>${itest.include}</include>
+                            </includes>
+                            <testFailureIgnore>true</testFailureIgnore>
+                        </configuration>
+                    </execution>
                 </executions>
             </plugin>
 
@@ -198,7 +225,7 @@
             <plugin>
                 <groupId>net.kindleit</groupId>
                 <artifactId>maven-gae-plugin</artifactId>
-                <version>0.9.6-B1</version>
+                <version>0.9.6</version>
                 <configuration>
                     <port>8485</port>
                     <monitor.port>8788</monitor.port>
@@ -214,8 +241,8 @@
                     <dependency>
                         <groupId>net.kindleit</groupId>
                         <artifactId>gae-runtime</artifactId>
-                        <version>1.7.5.1</version>
-                        <!--<version>${gae.version}</version>-->
+                        <!--<version>1.7.5.1</version>-->
+                        <version>${gae.version}</version>
                         <type>pom</type>
                     </dependency>
                     <dependency>
@@ -225,6 +252,21 @@
                     </dependency>
                 </dependencies>
                 <executions>
+                    <execution>
+                        <id>start-gae</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                            <goal>start</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>stop-gae</id>
+                        <phase>post-integration-test</phase>
+                        <goals>
+                            <goal>stop</goal>
+                        </goals>
+                    </execution>
                 </executions>
             </plugin>
 
@@ -293,58 +335,6 @@
                         </configuration>
                     </plugin>
                 </plugins>                
-            </build>
-        </profile>
-        <profile>
-            <id>itest</id>
-            <properties>
-                <spring.profiles.active>itest</spring.profiles.active>
-            </properties>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>net.kindleit</groupId>
-                        <artifactId>maven-gae-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>start-gae</id>
-                                <phase>pre-integration-test</phase>
-                                <goals>
-                                    <!--<goal>stop</goal>-->
-                                    <goal>start</goal>
-                                </goals>
-                            </execution>
-                            <execution>
-                                <id>stop-gae</id>
-                                <phase>post-integration-test</phase>
-                                <goals>
-                                    <goal>stop</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>surefire-itest</id>
-                                <phase>integration-test</phase>
-                                <goals>
-                                    <goal>test</goal>
-                                </goals>
-                                <configuration>
-                                    <skip>false</skip>
-                                    <includes>
-                                        <include>${itest.include}</include>
-                                    </includes>
-                                    <testFailureIgnore>true</testFailureIgnore>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
             </build>
         </profile>
         <profile>

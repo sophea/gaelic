@@ -4,6 +4,10 @@
 
 package com.wadpam.gaelic;
 
+import com.wadpam.gaelic.exception.MethodNotAllowedException;
+import com.wadpam.gaelic.exception.RestException;
+import com.wadpam.gaelic.json.JException;
+import com.wadpam.gaelic.json.JKeyFactory;
 import com.wadpam.gaelic.tree.Interceptor;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -13,7 +17,9 @@ import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.annotate.JsonSerialize;
 import org.slf4j.Logger;
@@ -25,6 +31,9 @@ import org.slf4j.LoggerFactory;
  */
 public class GaelicServlet extends HttpServlet {
     
+    public static final String MEDIA_TYPE_JSON = "application/json";
+    public static final String MEDIA_TYPE_FORM = "application/x-www-form-urlencoded";
+    
     public static final String INIT_PARAM_CONFIG = "com.wadpam.gaelic.Config";
     public static final String REQUEST_ATTR_PATHSTACK = "com.wadpam.gaelic.PathStack";
     public static final String REQUEST_ATTR_HANDLERNODE = "com.wadpam.gaelic.HandlerNode";
@@ -32,9 +41,20 @@ public class GaelicServlet extends HttpServlet {
     public static final String REQUEST_ATTR_RESPONSEBODY = "com.wadpam.gaelic.ResponseBody";
     public static final String REQUEST_ATTR_RESPONSESTATUS = "com.wadpam.gaelic.ResponseStatus";
     
-    protected static final ObjectMapper MAPPER = new ObjectMapper();
+    public static final int ERROR_CODE_SERVLET_EXCEPTION = 1;
+    public static final int ERROR_CODE_IO_EXCEPTION = 2;
+    public static final int ERROR_CODE_ID_LONG = 3;
+    
+    public static final int ERROR_CODE_CRUD_BASE = 100;
+    public static final int ERROR_CODE_ENTITY_BASE = 200;
+    public static final int ERROR_CODE_LEAF_BASE = 300;
+    public static final int ERROR_CODE_OAUTH2_PROVIDER_BASE = 900;
+    public static final int ERROR_CODE_APPLICATION_BASE = 1000;
+    
+    public static final ObjectMapper MAPPER = new ObjectMapper();
     static {
         MAPPER.setSerializationInclusion(JsonSerialize.Inclusion.NON_NULL);
+        MAPPER.getDeserializationConfig().set(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
     
     static final Logger LOG = LoggerFactory.getLogger(GaelicServlet.class);
@@ -75,31 +95,48 @@ public class GaelicServlet extends HttpServlet {
         }
     }
     
-    protected static LinkedList<String> parsePath(HttpServletRequest request) {
-        final LinkedList<String> pathStack = new LinkedList<String>();
-        final String uri = request.getRequestURI();
-        for (String p : uri.split("/")) {
-            if (!"".equals(p)) {
-                pathStack.add(p);
-            }
+    protected void renderResponse(HttpServletRequest request, 
+            HttpServletResponse response, 
+            RestException exception) throws IOException {
+        
+        // for redirect and forward:
+        if (response.isCommitted()) {
+            LOG.trace("response already committed.");
+            return;
         }
-        request.setAttribute(REQUEST_ATTR_PATHSTACK, pathStack);
-        return pathStack;
-    }
+        
+        Object responseBody;
+        if (null != exception) {
+            LOG.debug("Handling exception: {}", exception);
+            
+            if (RestException.STATUS_METHOD_NOT_ALLOWED == exception.getStatus() &&
+                    exception instanceof MethodNotAllowedException) {
+                // The response MUST include an Allow header containing a list of valid methods for the requested resource.
+                String allow = ((MethodNotAllowedException) exception).getAllow().toString();
+                allow = null != allow ? allow.substring(1, allow.length()-1) : null;
+                LOG.info("Allow: {}", allow);
+                response.setHeader("Allow", allow);
+            }
 
-    protected void renderResponse(HttpServletRequest request, HttpServletResponse response) throws IOException {
-        // respond with XML or JSON?
-        final Integer responseStatus = (Integer) request.getAttribute(REQUEST_ATTR_RESPONSESTATUS);
-        response.setStatus(null != responseStatus ? responseStatus : 200);
-        final Object responseBody = request.getAttribute(REQUEST_ATTR_RESPONSEBODY);
+            response.sendError(exception.getStatus(), exception.getMessage());
+            responseBody = new JException(exception);
+        }
+        else {
+            final Integer responseStatus = (Integer) request.getAttribute(REQUEST_ATTR_RESPONSESTATUS);
+            response.setStatus(null != responseStatus ? responseStatus : 200);
+            responseBody = request.getAttribute(REQUEST_ATTR_RESPONSEBODY);
+        }
+        
         if (null != responseBody) {
+            
+            // respond with XML or JSON?
             final String accepts = request.getHeader("Accept");
-            String contentType = "application/json";
+            String contentType = MEDIA_TYPE_JSON;
 //            if (null != accepts && (accepts.contains("text/xml") || accepts.contains("application/xml"))) {
 //                contentType = "application/xml";
 //            }
 
-            LOG.debug("Rendering body with Content-Type: {}", contentType);
+            LOG.debug("Rendering body {} with Content-Type: {}", responseBody, contentType);
             response.setContentType(contentType);
             final PrintWriter writer = response.getWriter();
             // TODO: serialize XML
@@ -134,41 +171,75 @@ public class GaelicServlet extends HttpServlet {
     }
 
     @Override
-    protected void service(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        Exception exception = null;
+    protected void service(HttpServletRequest req, HttpServletResponse response) throws ServletException, IOException {
+        final GaelicRequest request = new GaelicRequest(req);
+        final String uri = request.getRequestURI();
+        
+        LOG.info("======= GaelicServlet processing {} {} ...", 
+                request.getMethod(), uri);
+        RestException exception = null;
 
         // stack the request URI
-        final LinkedList<String> pathStack = parsePath(request);
-
-        final Node handler = rootNode.getServingNode(request, pathStack, 0);
+        final String ctxt = request.getContextPath();
+        final LinkedList<String> pathStack = JKeyFactory.parsePath(uri, ctxt);
+        Node handler = null;
         
         try {
+            handler = rootNode.getServingNode(request, pathStack, 0);
             if (null != handler) {
 
                 // populate and serve using handler
                 request.setAttribute(REQUEST_ATTR_HANDLERNODE, handler);
-                LOG.debug("Mapped {} {} to Handler {}", new Object[] {
-                    request.getMethod(), request.getRequestURI(), handler
+                LOG.debug("------- Mapped {} {} to Handler {}", new Object[] {
+                    request.getMethod(), uri, handler
                 });
 
                 rootNode.service(request, response);
             }
             else {
-                request.setAttribute(GaelicServlet.REQUEST_ATTR_RESPONSESTATUS, 404);
+                exception = RestException.NOT_FOUND;
             }
-            renderResponse(request, response);
+        }
+        catch (RestException rest) {
+            exception = rest;
         }
         catch (ServletException ex) {
-            exception = ex;
-            throw ex;
+            exception = new RestException(500, ex.getMessage(), 
+                    ERROR_CODE_SERVLET_EXCEPTION, null, null);
         }
         catch (IOException ex) {
-            exception = ex;
-            throw ex;
+            exception = new RestException(500, ex.getMessage(), 
+                    ERROR_CODE_IO_EXCEPTION, null, null);
         }
         finally {
+            renderResponse(request, response, exception);
             afterCompletion(request, response, handler, exception);
+            LOG.info("+++++++ GaelicServlet done processing {} {} +++++++", 
+                    request.getMethod(), uri);
         }
     }
 
+    public static class GaelicRequest extends HttpServletRequestWrapper {
+        private final String method;
+
+        public GaelicRequest(HttpServletRequest request) {
+            super(request);
+            this.method = getEffectiveMethod(request);
+        }
+
+        protected static String getEffectiveMethod(HttpServletRequest request) {
+            final String method = request.getMethod();
+            final String _method = request.getParameter("_method");
+            if (Node.METHOD_GET.equals(method) && null != _method) {
+                return _method;
+            }
+            return method;
+        }
+    
+        @Override
+        public String getMethod() {
+            return method;
+        }
+        
+    }
 }

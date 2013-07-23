@@ -65,7 +65,27 @@ public class GaelicServletTest {
         
         Node handler = (Node) request.getAttribute(GaelicServlet.REQUEST_ATTR_HANDLERNODE);
         assertNotNull(handler);
-        String domain = handler.getPathVariable("domain");
+        String domain = handler.getPathVariable("{domain}");
+        assertEquals("gaelic", domain);
+    }
+
+    @Test
+    public void testGetWithContext() throws ServletException, IOException {
+        request.setMethod("GET");
+        request.setRequestURI("/myapp-1-SNAPSHOT.war/api/gaelic/endpoints");
+        request.setContextPath("/myapp-1-SNAPSHOT.war");
+        LOG.info("---------------- testService() -------------------------------");
+
+        servlet.service(request, response);
+        assertEquals(200, response.getStatus());
+//        assertTrue(0 < response.getContentLength());
+        assertEquals("application/json", response.getContentType());
+        assertEquals("{\"method\":\"GET\",\"uri\":\"/myapp-1-SNAPSHOT.war/api/gaelic/endpoints\"}", response.getContentAsString());
+        assertNull(request.getAttribute(UnitTestInterceptor.REQUEST_ATTR_INTERCEPTOR_PRE));
+        
+        Node handler = (Node) request.getAttribute(GaelicServlet.REQUEST_ATTR_HANDLERNODE);
+        assertNotNull(handler);
+        String domain = handler.getPathVariable("{domain}");
         assertEquals("gaelic", domain);
     }
 
@@ -77,6 +97,9 @@ public class GaelicServletTest {
 
         servlet.service(request, response);
         assertEquals(404, response.getStatus());
+        assertEquals("Not Found", response.getErrorMessage());
+        assertTrue(response.getContentAsString().startsWith(
+                "{\"code\":0,\"status\":404,\"message\":\"Not Found\",\"stackTrace\":\"com.wadpam.gaelic.exception.RestException.<clinit>:"));
     }
 
     @Test
@@ -104,4 +127,26 @@ public class GaelicServletTest {
         assertNull(request.getAttribute(UnitTestInterceptor.REQUEST_ATTR_INTERCEPTOR_POST));
         assertNull(request.getAttribute(UnitTestInterceptor.REQUEST_ATTR_INTERCEPTOR_AFTER));
     }
+
+    @Test
+    public void testJsonpPost() throws ServletException, IOException {
+        request.setMethod("GET");
+        request.setRequestURI("/api/gaelic/endpoints");
+        request.setParameter("_method", "POST");
+        request.setQueryString("?_method=POST");
+        LOG.info("---------------- testJsonpPost() -------------------------------");
+
+        servlet.service(request, response);
+        assertEquals(200, response.getStatus());
+//        assertTrue(0 < response.getContentLength());
+        assertEquals("application/json", response.getContentType());
+        assertEquals("{\"method\":\"POST\",\"uri\":\"/api/gaelic/endpoints\"}", response.getContentAsString());
+        assertNull(request.getAttribute(UnitTestInterceptor.REQUEST_ATTR_INTERCEPTOR_PRE));
+        
+        Node handler = (Node) request.getAttribute(GaelicServlet.REQUEST_ATTR_HANDLERNODE);
+        assertNotNull(handler);
+        String domain = handler.getPathVariable("{domain}");
+        assertEquals("gaelic", domain);
+    }
+
 }
